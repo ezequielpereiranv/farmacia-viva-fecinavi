@@ -1,6 +1,6 @@
 {
   "name": "farmacia-viva-espaco-escolar",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Farmácia Viva no Espaço Escolar - FeciNAVI Naviraí-MS",
   "main": "electron-main.js",
   "author": "E.E. Presidente Médici",
@@ -14,7 +14,8 @@
   "dependencies": {
     "express": "^5.1.0",
     "socket.io": "^4.8.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "mongodb": "^6.20.0"
   },
   "devDependencies": {
     "electron": "^38.1.2",
