@@ -18,7 +18,7 @@ const perguntas = [
 ];
 
 function ips(){ const a=[]; Object.values(os.networkInterfaces()).forEach(l=>(l||[]).forEach(n=>{if(n.family==='IPv4'&&!n.internal&&!n.address.startsWith('169.254.'))a.push(n.address)})); return [...new Set(a)]; }
-function dadosVazios(){return {_id:"resultado-geral",projeto:"Farmácia Viva no Espaço Escolar",totalParticipantes:0,perguntas:perguntas.map(p=>({id:p.id,texto:p.texto,opcoes:p.opcoes,correta:p.correta,A:0,B:0,C:0}))};}
+function dadosVazios(){return {_id:"resultado-geral",projeto:"Farmácia Viva no Espaço Escolar",totalParticipantes:0,totalAcertos:0,totalErros:0,perguntas:perguntas.map(p=>({id:p.id,texto:p.texto,opcoes:p.opcoes,correta:p.correta,A:0,B:0,C:0}))};}
 function semId(d){ if(!d) return d; const {_id,...rest}=d; return rest; }
 
 function createServer(){
@@ -35,7 +35,7 @@ function createServer(){
       await mongoClient.connect();
       colecao=mongoClient.db("farmacia_viva").collection("resultados");
       resultados=await colecao.findOne({_id:"resultado-geral"});
-      if(!resultados){resultados=dadosVazios();await colecao.insertOne(resultados);}
+      if(!resultados){resultados=dadosVazios();await colecao.insertOne(resultados);}else{if(typeof resultados.totalAcertos!=="number") resultados.totalAcertos=0;if(typeof resultados.totalErros!=="number") resultados.totalErros=0;}
       console.log("MongoDB Atlas conectado - dados persistentes ativos.");
     } else {
       resultados=carregarArquivo();
@@ -49,7 +49,7 @@ function createServer(){
   app.get("/api/resultados",(req,res)=>res.json(semId(resultados||dadosVazios())));
   app.get("/api/info",(req,res)=>{const redes=ips();const ip=redes.find(x=>/^192\.168\.|^10\.|^172\.(1[6-9]|2\d|3[01])\./.test(x))||redes[0]||"127.0.0.1";const publicUrl=process.env.RENDER_EXTERNAL_URL||null;const base=publicUrl||`http://${ip}:${actualPort}`;res.json({port:actualPort,ip,ips:redes,publicUrl,pesquisa:`${base}/pesquisa.html`,dashboard:`${base}/dashboard.html`,relatorio:`${base}/relatorio.html`,persistencia:colecao?"mongodb":"arquivo-local"});});
   app.get("/api/qrcode",async(req,res)=>{try{const redes=ips();const ip=redes.find(x=>/^192\.168\.|^10\.|^172\.(1[6-9]|2\d|3[01])\./.test(x))||redes[0]||"127.0.0.1";const base=process.env.RENDER_EXTERNAL_URL||`http://${ip}:${actualPort}`;const tipo=req.query.tipo==='dashboard'?'dashboard.html':'pesquisa.html';const svg=await QRCode.toString(`${base}/${tipo}`,{type:'svg',margin:1,width:280});res.type('image/svg+xml').send(svg);}catch(e){res.status(500).send('QR indisponível')}});
-  app.post("/api/responder",async(req,res)=>{try{const respostas=req.body?.respostas;if(!Array.isArray(respostas)||respostas.length!==perguntas.length||respostas.some(r=>!["A","B","C"].includes(r)))return res.status(400).json({erro:"Respostas inválidas."});let acertos=0;respostas.forEach((r,i)=>{resultados.perguntas[i][r]++;if(r===perguntas[i].correta)acertos++;});resultados.totalParticipantes++;await salvar();const saida=semId(resultados);io.emit("resultadosAtualizados",saida);res.json({ok:true,acertos,total:perguntas.length});}catch(e){console.error("Erro ao salvar resposta:",e);res.status(500).json({erro:"Não foi possível salvar a resposta."});}});
+  app.post("/api/responder",async(req,res)=>{try{const respostas=req.body?.respostas;if(!Array.isArray(respostas)||respostas.length!==perguntas.length||respostas.some(r=>!["A","B","C"].includes(r)))return res.status(400).json({erro:"Respostas inválidas."});let acertos=0;const detalhes=respostas.map((r,i)=>{const p=perguntas[i];resultados.perguntas[i][r]++;const acertou=r===p.correta;if(acertou)acertos++;return {id:p.id,texto:p.texto,resposta:r,respostaTexto:p.opcoes[r],correta:p.correta,corretaTexto:p.opcoes[p.correta],acertou};});const erros=perguntas.length-acertos;resultados.totalParticipantes++;resultados.totalAcertos=(resultados.totalAcertos||0)+acertos;resultados.totalErros=(resultados.totalErros||0)+erros;await salvar();const saida=semId(resultados);io.emit("resultadosAtualizados",saida);res.json({ok:true,acertos,erros,total:perguntas.length,percentual:Math.round(acertos/perguntas.length*100),detalhes});}catch(e){console.error("Erro ao salvar resposta:",e);res.status(500).json({erro:"Não foi possível salvar a resposta."});}});
   app.post("/api/resetar",async(req,res)=>{try{if(req.body?.senha!=="medici8")return res.status(403).json({erro:"Senha incorreta."});resultados=dadosVazios();await salvar();const saida=semId(resultados);io.emit("resultadosAtualizados",saida);res.json({ok:true});}catch(e){console.error("Erro ao zerar:",e);res.status(500).json({erro:"Não foi possível zerar os resultados."});}});
   io.on("connection",s=>s.emit("resultadosAtualizados",semId(resultados||dadosVazios())));
 
